@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=YouMon
+Comment=Monster Card Maker!
+Exec=bash -c 'cd ~/YouMon && ./launch.sh'
+Terminal=true
+Type=Application
+Categories=Game;

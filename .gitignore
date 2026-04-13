@@ -1,0 +1,11 @@
+config.json
+.env
+__pycache__/
+*.pyc
+cards/
+.claude-sessions/
+.claude/
+.venv/
+pi@kidscomp/
+.DS_Store
+*~
