@@ -124,6 +124,9 @@ class AppWindow:
                 self._current_card = card
                 self.root.after(0, lambda: self._generation_done(front_img))
 
+            except card_gen.CardRefused as e:
+                error_msg = str(e)
+                self.root.after(0, lambda: self._generation_error(error_msg, refused=True))
             except Exception as e:
                 error_msg = str(e)
                 self.root.after(0, lambda: self._generation_error(error_msg))
@@ -137,11 +140,18 @@ class AppWindow:
         self.form.set_generating(False)
         self.form.set_status("Card created!")
 
-    def _generation_error(self, error_msg: str):
+    def _generation_error(self, error_msg: str, refused: bool = False):
         self.form.set_generating(False)
-        self.form.set_status("Error - see details")
-        self.preview.show_error("Generation failed.\nCheck your API key\nand internet.")
-        messagebox.showerror("Generation Error", f"Something went wrong:\n\n{error_msg}")
+        if refused:
+            # A player can actually fix this one, so say how instead of
+            # showing them a stack trace.
+            self.form.set_status("Try a different monster")
+            self.preview.show_error("The art robot\nsaid no to that one.\nTry another idea!")
+            messagebox.showinfo("Let's try a different monster", error_msg)
+        else:
+            self.form.set_status("Error - see details")
+            self.preview.show_error("Generation failed.\nCheck your API key\nand internet.")
+            messagebox.showerror("Generation Error", f"Something went wrong:\n\n{error_msg}")
 
     def _open_print_dialog(self):
         cards = self.storage.load_all_cards()
