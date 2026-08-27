@@ -9,3 +9,6 @@ cards/
 pi@kidscomp/
 .DS_Store
 *~
+
+# eval artifacts (generated cards, judge output)
+evals/results/
