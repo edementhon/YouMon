@@ -36,20 +36,33 @@ two or three attacks each with cost icons, an attack name and a damage number, i
 flavor text near the bottom, and a Weakness/Resistance/Retreat bar at the very bottom. \
 The coloured frame should run all the way to the edges of the image with no white margin.
 
-Two hard rules, because both ruin a card that otherwise looks fine:
+One hard rule, because it ruins a card that otherwise looks fine:
 
-- If any real-world brand or franchise name is printed on the card (Pokemon, Pikachu, \
-Minecraft, Mario, and so on), text_quality is at most 2 and printable is false. Drawing \
-an original creature in a familiar art style is fine and expected; printing someone \
-else's trademark on the card is not. "YouMon", and any "<Name>Mon" built from the \
-player's own name, is this app's own branding — it belongs on the card and is never a \
-brand-name problem.
 - If any word on the card is misspelled or garbled, text_quality is at most 2.
+
+Always list any real-world brand or franchise names printed on the card in \
+brand_names_on_card, whatever the policy below says. "YouMon", and any "<Name>Mon" built \
+from the player's own name, is this app's own branding — it belongs on the card and is \
+never a brand name.
+
+{brand_policy}
 
 Scores are 0-5 and 5 should be rare. Reserve 5 for a card with nothing you would change; \
 a clean, competent, unremarkable card is a 3. If you find yourself giving 5s across the \
 board, look harder at the small type: the flavor text, the attack costs, and the \
 Weakness/Resistance/Retreat bar are where these cards fall apart."""
+
+# Whether a printed franchise name counts against the card is a product
+# decision, not a fact about the image, so it is a policy the caller sets. The
+# judge reports the names either way; only the scoring changes.
+BRAND_POLICY_ALLOWED = """These cards are printed at home for one child's own binder, and \
+franchise names appearing in the card text are accepted. Do not lower any score or set \
+printable false because of them. Judge the card on craft and appeal alone."""
+
+BRAND_POLICY_FORBIDDEN = """If any real-world brand or franchise name is printed on the \
+card (Pokemon, Pikachu, Minecraft, Mario, and so on), text_quality is at most 2 and \
+printable is false. Drawing an original creature in a familiar art style is fine and \
+expected; printing someone else's trademark on the card is not."""
 
 SCHEMA = {
     "type": "object",
@@ -121,9 +134,18 @@ def _data_url(path: str, max_edge: int = 1024) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def judge_card(image_path: str, monster_name: str, description: str) -> dict:
-    """Grade one card image. Returns the parsed rubric dict."""
+def judge_card(image_path: str, monster_name: str, description: str,
+               allow_brand_text: bool = True) -> dict:
+    """Grade one card image. Returns the parsed rubric dict.
+
+    allow_brand_text must match the setting the card was generated under, or
+    the card gets marked down for obeying its own instructions.
+    """
     client = get_client()
+    rubric = RUBRIC.replace(
+        "{brand_policy}",
+        BRAND_POLICY_ALLOWED if allow_brand_text else BRAND_POLICY_FORBIDDEN,
+    )
     asked_for = (
         f"The child asked for a monster named \"{monster_name}\""
         + (f" described as: {description}" if description else " with no description")
@@ -132,7 +154,7 @@ def judge_card(image_path: str, monster_name: str, description: str) -> dict:
     response = client.responses.create(
         model=JUDGE_MODEL,
         input=[
-            {"role": "system", "content": RUBRIC},
+            {"role": "system", "content": rubric},
             {"role": "user", "content": [
                 {"type": "input_text", "text": asked_for},
                 {"type": "input_image", "image_url": _data_url(image_path)},

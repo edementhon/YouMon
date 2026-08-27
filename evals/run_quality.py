@@ -50,10 +50,13 @@ def run_variant(variant: str, prompts: list, workers: int, regrade: bool = False
     ok = [r for r in results if r.status == "ok"]
     lookup = {p.key: p for p in prompts}
 
+    allow_brand = harness.VARIANTS[variant].allow_brand_text
+
     def grade_one(r):
         p = lookup[r.key]
         try:
-            g = judge.judge_card(r.image_path, p.monster_name, p.description)
+            g = judge.judge_card(r.image_path, p.monster_name, p.description,
+                                 allow_brand_text=allow_brand)
         except Exception as e:  # noqa: BLE001
             return r.key, {"error": f"{type(e).__name__}: {e}"[:200]}
         return r.key, g

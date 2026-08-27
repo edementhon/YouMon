@@ -28,6 +28,11 @@ VARIANTS: dict[str, config.GenSettings] = {
     "terra-img2-high": config.GenSettings("gpt-5.6-terra", "gpt-image-2", "high", "1200x1680"),
     "luna-img2-med": config.GenSettings("gpt-5.6-luna", "gpt-image-2", "medium", "1200x1680"),
     "sol-img2-med": config.GenSettings("gpt-5.6-sol", "gpt-image-2", "medium", "1200x1680"),
+    # A/B arm: identical to default except the prompt forbids franchise names in
+    # the card text. Paired with "default" this measures whether letting a card
+    # say "Pokemon" costs anything in refusals or silently dropped renders.
+    "brand-free": config.GenSettings("gpt-5.6-terra", "gpt-image-2", "medium",
+                                     "1200x1680", allow_brand_text=False),
     # What YouMon shipped before this round. gpt-image-1 shuts down 2026-10-23,
     # so this variant is a baseline for comparison, not an option.
     "legacy": config.GenSettings("gpt-5.4", "gpt-image-1", "auto", "1024x1536"),

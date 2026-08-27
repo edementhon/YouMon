@@ -19,6 +19,11 @@ class GenSettings:
     image_model: str = "gpt-image-2"
     image_quality: str = "medium"
     image_size: str = "1200x1680"
+    # Whether the card may carry franchise names in its text (the species bar
+    # tends to come out as "Spark-Tail Fox Pokemon" if nothing stops it). Kids
+    # like it. The only real argument against is refusal risk; see
+    # evals/run_refusal.py --variant brand-free to re-measure that.
+    allow_brand_text: bool = True
 
 
 # gpt-image-2 is the only image model with a future: gpt-image-1 shuts down

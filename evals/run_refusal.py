@@ -74,6 +74,14 @@ def main() -> int:
     print(f"\nrefusal rate: {total['refused'] / n:.1%}   "
           f"clean first try: {first_try_ok / n:.1%}")
 
+    # Per-attempt outcomes across every round trip. "no_image" is the one to
+    # watch: the call succeeds, bills, and comes back with no pixels, which is
+    # what a silent output-moderation drop looks like from the client side.
+    attempt_outcomes = collections.Counter(o for r in results for o in r.attempts)
+    total_attempts = sum(attempt_outcomes.values())
+    print(f"attempts: {total_attempts} -> " +
+          ", ".join(f"{k}={v}" for k, v in sorted(attempt_outcomes.items())))
+
     for r in results:
         if r.status != "ok":
             print(f"\n[{r.status}] {r.key}: {r.detail[:200]}")
@@ -84,6 +92,7 @@ def main() -> int:
         "n": n,
         "refusal_rate": total["refused"] / n,
         "first_try_rate": first_try_ok / n,
+        "attempt_outcomes": dict(attempt_outcomes),
         "by_band": {b: dict(c) for b, c in by_band.items()},
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))

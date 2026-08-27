@@ -9,7 +9,7 @@ from core.card_model import CardData
 import config
 
 
-SYSTEM_PROMPT = """You design cards for YouMon, an original kids' monster trading card game. \
+_SYSTEM_PROMPT_TEMPLATE = """You design cards for YouMon, an original kids' monster trading card game. \
 Every monster is a brand-new, wholly original creature.
 
 The players are children, roughly 5 to 10 years old, making cards of monsters they invented. \
@@ -36,8 +36,7 @@ The card image should look like a Japanese-style collectible monster trading car
 - Gold/yellow outer border with rounded corners
 - Monster name top-left, HP top-right with a small elemental type icon
 - Large illustration window in the upper half showing the original monster in an action scene
-- A thin info bar below the illustration with the monster's species category, worded like "Spark-Tail Fox Monster" or "Spark-Tail Fox YouMon" — never the name of a real game, show, or franchise
-- No real-world brand, franchise, or trademark name appears anywhere on the card, in any text or logo
+- A thin info bar below the illustration with the monster's species category{brand_rule}
 - Attack section: each attack shows small elemental cost icons on the left, attack name in the middle, damage number on the right
 - Thin divider lines between attacks
 - Italic flavor text near the bottom
@@ -52,6 +51,28 @@ After generating the image, respond with a JSON block:
 ```json
 {"flavor_text": "...", "monster_type": "...", "hitpoints": 100, "attacks": [{"name": "...", "description": "...", "damage": 30}, {"name": "...", "description": "...", "damage": 50}, {"name": "...", "description": "...", "damage": 70}]}
 ```"""
+
+# Left out of the prompt entirely when brand text is allowed, rather than
+# phrased as permission — telling a model it *may* print trademarks reads as a
+# flag either way, and the whole question here is whether raising the subject
+# changes the refusal rate.
+_BRAND_RULE = (
+    ", worded like \"Spark-Tail Fox Monster\" or \"Spark-Tail Fox YouMon\" — never the "
+    "name of a real game, show, or franchise\n"
+    "- No real-world brand, franchise, or trademark name appears anywhere on the card, "
+    "in any text or logo"
+)
+
+
+def build_system_prompt(allow_brand_text: bool) -> str:
+    # str.replace, not str.format — the template carries a JSON example whose
+    # braces format() would try to interpret.
+    return _SYSTEM_PROMPT_TEMPLATE.replace(
+        "{brand_rule}", "" if allow_brand_text else _BRAND_RULE
+    )
+
+
+SYSTEM_PROMPT = build_system_prompt(config.DEFAULT_GEN.allow_brand_text)
 
 # Retries walk down this ladder. Attempt 1 sends the child's words untouched;
 # later attempts add progressively firmer reframing. Re-sending an identical
@@ -161,7 +182,8 @@ def generate_card(
             response = client.responses.create(
                 model=settings.text_model,
                 input=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system",
+                     "content": build_system_prompt(settings.allow_brand_text)},
                     {"role": "user", "content": user_msg},
                 ],
                 tools=[{
