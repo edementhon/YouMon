@@ -73,6 +73,13 @@ def _pil_to_reader(img: Image.Image) -> ImageReader:
     return ImageReader(buf)
 
 
+# Note: cards are drawn into a fixed 2.5x3.5 box below, so an off-ratio image
+# is stretched to fit. New cards are generated at exactly 2.5:3.5 (see
+# config.GenSettings.image_size) so they land undistorted. Cards saved before
+# that came back at 1024x1536 and print ~7% wide. Left as-is deliberately:
+# saved cards are not rewritten or trimmed.
+
+
 def export_pdf(
     images: list[Image.Image],
     paper_size: str,
