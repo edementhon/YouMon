@@ -1,79 +1,118 @@
+from __future__ import annotations
 import tkinter as tk
 from PIL import ImageTk
 from core.card_model import CardData
 from core.storage import CardStorage
+import config
 
 
 class CardDrawerPanel:
-    """Scrollable sidebar showing thumbnails of all saved cards."""
+    """Scrollable sidebar showing thumbnails of all saved cards.
+
+    Draws canvas items rather than packing a Button per card, and only builds
+    the rows currently on screen. Both of those matter once a child has a few
+    hundred cards:
+
+    - A packed widget per card made the inner frame taller than X11 can
+      address. Window coordinates are 16-bit signed, so past ~32767 pixels
+      (about 187 cards) everything landed at wrapped coordinates and piled up
+      on top of each other. Searching hid enough rows to drop back under the
+      limit, which is why filtering appeared to "fix" it. Canvas items are
+      drawn, not windowed, so the ceiling is gone.
+    - Building every row up front meant decoding every card image up front.
+      Now a row costs nothing until it scrolls into view.
+    """
+
+    THUMB_H = config.THUMBNAIL_HEIGHT
+    PAD = 4
+    LABEL_H = 16
+    ROW_H = PAD + THUMB_H + PAD + LABEL_H
+    OVERSCAN = 3          # rows to build beyond the viewport, so scrolling is smooth
+    PHOTO_CACHE_MAX = 80  # decoded thumbnails held in memory
 
     def __init__(self, parent: tk.Widget, on_card_selected):
         self.on_card_selected = on_card_selected
-        self._photo_refs = []
-        self._card_widgets: list[tuple[CardData, list[tk.Widget]]] = []
+        self.storage: CardStorage | None = None
+        self._all_cards: list[CardData] = []
+        self._visible_cards: list[CardData] = []
+        self._rows: dict[int, list[int]] = {}      # row index -> canvas item ids
+        self._photos: dict[str, ImageTk.PhotoImage] = {}
+        self._photo_order: list[str] = []
+        self._selected_id: str | None = None
 
         self.frame = tk.Frame(parent, width=170, bg="#1a1a40")
-        self.frame.pack_propagate(False)  # Keep fixed width
+        self.frame.pack_propagate(False)
 
-        # Title
         tk.Label(
             self.frame, text="My Cards",
             font=("Helvetica", 13, "bold"), fg="white", bg="#1a1a40"
         ).pack(pady=(10, 5))
 
-        # Search box
+        self._count_label = tk.Label(
+            self.frame, text="", font=("Helvetica", 8), fg="#8888bb", bg="#1a1a40"
+        )
+        self._count_label.pack()
+
         self._search_var = tk.StringVar()
-        self._search_var.trace_add("write", lambda *_: self._filter_cards())
         self._search_entry = tk.Entry(
             self.frame, textvariable=self._search_var,
             font=("Helvetica", 9), bg="#2d2d5e", fg="white",
             insertbackground="white", width=15
         )
-        self._search_entry.pack(padx=10, pady=(0, 5))
-        # Placeholder behavior
+        self._search_entry.pack(padx=10, pady=(2, 5))
         self._search_placeholder = "Search..."
         self._search_entry.insert(0, self._search_placeholder)
         self._search_entry.config(fg="#888")
         self._search_entry.bind("<FocusIn>", self._on_search_focus_in)
         self._search_entry.bind("<FocusOut>", self._on_search_focus_out)
 
-        # Scrollable area
         self.canvas = tk.Canvas(
-            self.frame, width=150, bg="#1a1a40",
-            highlightthickness=0, bd=0
+            self.frame, width=150, bg="#1a1a40", highlightthickness=0, bd=0
         )
         self.scrollbar = tk.Scrollbar(
-            self.frame, orient=tk.VERTICAL, command=self.canvas.yview
+            self.frame, orient=tk.VERTICAL, command=self._on_scrollbar
         )
-        self.inner_frame = tk.Frame(self.canvas, bg="#1a1a40")
-
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.canvas_window = self.canvas.create_window(
-            (0, 0), window=self.inner_frame, anchor="nw"
-        )
 
-        self.inner_frame.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        # Make canvas width follow the frame
-        self.canvas.bind(
-            "<Configure>",
-            lambda e: self.canvas.itemconfig(self.canvas_window, width=e.width)
-        )
-
-        # Bind scrollwheel when hovering over this panel
+        self.canvas.bind("<Configure>", lambda e: self._render())
         self.frame.bind("<Enter>", self._bind_mousewheel)
         self.frame.bind("<Leave>", self._unbind_mousewheel)
 
-        # Empty state label
-        self.empty_label = tk.Label(
-            self.inner_frame, text="No cards yet!\nGenerate your\nfirst card.",
-            font=("Helvetica", 10), fg="#666", bg="#1a1a40", justify=tk.CENTER
-        )
-        self.empty_label.pack(pady=20)
+        self._empty_id: int | None = None
+
+        # Wired last on purpose: inserting the placeholder text above writes to
+        # the StringVar, and a trace attached earlier would fire _filter_cards
+        # before the canvas it draws on exists.
+        self._search_var.trace_add("write", lambda *_: self._filter_cards())
+
+    # --- scrolling -------------------------------------------------------
+
+    def _on_scrollbar(self, *args):
+        self.canvas.yview(*args)
+        self._render()
+
+    def _bind_mousewheel(self, event=None):
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel)   # X11 wheel up
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel)   # X11 wheel down
+
+    def _unbind_mousewheel(self, event=None):
+        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.canvas.unbind_all(seq)
+
+    def _on_mousewheel(self, event):
+        if getattr(event, "num", None) == 4:
+            delta = -1
+        elif getattr(event, "num", None) == 5:
+            delta = 1
+        else:
+            delta = int(-event.delta / 120)
+        self.canvas.yview_scroll(delta, "units")
+        self._render()
+
+    # --- search ----------------------------------------------------------
 
     def _on_search_focus_in(self, event):
         if self._search_entry.get() == self._search_placeholder:
@@ -85,63 +124,132 @@ class CardDrawerPanel:
             self._search_entry.insert(0, self._search_placeholder)
             self._search_entry.config(fg="#888")
 
+    def _query(self) -> str:
+        q = self._search_var.get().lower().strip()
+        return "" if q == self._search_placeholder.lower() else q
+
     def _filter_cards(self):
-        query = self._search_var.get().lower().strip()
-        if query == self._search_placeholder.lower():
-            query = ""
-        for card, widgets in self._card_widgets:
-            if not query or query in card.monster_name.lower():
-                for w in widgets:
-                    w.pack(pady=4 if isinstance(w, tk.Button) else 0, padx=10 if isinstance(w, tk.Button) else 0)
-            else:
-                for w in widgets:
-                    w.pack_forget()
+        q = self._query()
+        if q:
+            self._visible_cards = [
+                c for c in self._all_cards if q in c.monster_name.lower()
+            ]
+        else:
+            self._visible_cards = list(self._all_cards)
+        self.canvas.yview_moveto(0)
+        self._reset_rows()
+        self._render()
 
-    def _bind_mousewheel(self, event=None):
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _unbind_mousewheel(self, event=None):
-        self.canvas.unbind_all("<MouseWheel>")
-
-    def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-event.delta / 120), "units")
+    # --- public API ------------------------------------------------------
 
     def refresh(self, cards: list[CardData], storage: CardStorage):
-        """Reload all thumbnails."""
-        for widget in self.inner_frame.winfo_children():
-            widget.destroy()
-        self._photo_refs.clear()
-        self._card_widgets.clear()
+        """Replace the whole list (startup, or after a delete)."""
+        self.storage = storage
+        self._all_cards = list(reversed(cards))   # newest first
+        self._filter_cards()
 
-        if not cards:
-            self.empty_label = tk.Label(
-                self.inner_frame, text="No cards yet!\nGenerate your\nfirst card.",
-                font=("Helvetica", 10), fg="#666", bg="#1a1a40", justify=tk.CENTER
-            )
-            self.empty_label.pack(pady=20)
+    def add_card(self, card: CardData, storage: CardStorage):
+        """Put one new card at the top without rebuilding the rest.
+
+        Generating a card used to trigger a full reload of every thumbnail,
+        which is why the sidebar took as long to catch up as the app took to
+        start.
+        """
+        self.storage = storage
+        self._all_cards.insert(0, card)
+        self._filter_cards()
+
+    def select(self, card: CardData | None):
+        self._selected_id = card.id if card else None
+        self._reset_rows()
+        self._render()
+
+    # --- rendering -------------------------------------------------------
+
+    def _reset_rows(self):
+        self.canvas.delete("row")
+        self._rows.clear()
+
+    def _photo_for(self, card: CardData):
+        photo = self._photos.get(card.id)
+        if photo is not None:
+            return photo
+        try:
+            thumb = self.storage.load_thumbnail(card)
+        except Exception:
+            return None
+        photo = ImageTk.PhotoImage(thumb)
+        self._photos[card.id] = photo
+        self._photo_order.append(card.id)
+        while len(self._photo_order) > self.PHOTO_CACHE_MAX:
+            self._photos.pop(self._photo_order.pop(0), None)
+        return photo
+
+    def _render(self):
+        if self.storage is None:
             return
 
-        for card in reversed(cards):  # newest first
-            try:
-                thumb = storage.load_thumbnail(card)
-                photo = ImageTk.PhotoImage(thumb)
-                self._photo_refs.append(photo)
+        total = len(self._visible_cards)
+        height = max(total * self.ROW_H, 1)
+        width = max(self.canvas.winfo_width(), 1)
+        self.canvas.configure(scrollregion=(0, 0, width, height))
+        self._count_label.config(
+            text=f"{total} card{'s' if total != 1 else ''}"
+            + ("" if not self._query() else f" of {len(self._all_cards)}")
+        )
 
-                btn = tk.Button(
-                    self.inner_frame, image=photo, bd=2,
-                    relief=tk.GROOVE, bg="#2d2d5e", cursor="hand2",
-                    command=lambda c=card: self.on_card_selected(c),
+        if total == 0:
+            if self._empty_id is None:
+                msg = ("No cards yet!\nGenerate your\nfirst card."
+                       if not self._all_cards else "No cards match\nyour search.")
+                self._empty_id = self.canvas.create_text(
+                    width // 2, 40, text=msg, fill="#666",
+                    font=("Helvetica", 10), justify=tk.CENTER,
                 )
-                btn.pack(pady=4, padx=10)
+            return
+        if self._empty_id is not None:
+            self.canvas.delete(self._empty_id)
+            self._empty_id = None
 
-                # Monster name label below thumbnail
-                lbl = tk.Label(
-                    self.inner_frame, text=card.monster_name,
-                    font=("Helvetica", 9), fg="#ccc", bg="#1a1a40"
-                )
-                lbl.pack()
+        top = self.canvas.canvasy(0)
+        view_h = self.canvas.winfo_height() or 400
+        first = max(0, int(top // self.ROW_H) - self.OVERSCAN)
+        last = min(total - 1, int((top + view_h) // self.ROW_H) + self.OVERSCAN)
 
-                self._card_widgets.append((card, [btn, lbl]))
+        for idx in list(self._rows):
+            if idx < first or idx > last:
+                for item in self._rows.pop(idx):
+                    self.canvas.delete(item)
 
-            except Exception:
-                continue
+        for idx in range(first, last + 1):
+            if idx not in self._rows:
+                self._build_row(idx, width)
+
+    def _build_row(self, idx: int, width: int):
+        card = self._visible_cards[idx]
+        y = idx * self.ROW_H
+        cx = width // 2
+        items: list[int] = []
+        tag = f"card:{card.id}"
+
+        photo = self._photo_for(card)
+        if photo is None:
+            return
+
+        if card.id == self._selected_id:
+            items.append(self.canvas.create_rectangle(
+                cx - photo.width() // 2 - 3, y + self.PAD - 3,
+                cx + photo.width() // 2 + 3, y + self.PAD + self.THUMB_H + 3,
+                outline="#ffd700", width=2, tags=("row", tag),
+            ))
+
+        items.append(self.canvas.create_image(
+            cx, y + self.PAD, image=photo, anchor="n", tags=("row", tag),
+        ))
+        items.append(self.canvas.create_text(
+            cx, y + self.PAD + self.THUMB_H + 2, text=card.monster_name,
+            fill="#ccc", font=("Helvetica", 9), anchor="n", tags=("row", tag),
+        ))
+
+        self.canvas.tag_bind(tag, "<Button-1>", lambda _e, c=card: self.on_card_selected(c))
+        self._rows[idx] = items

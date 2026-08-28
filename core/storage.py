@@ -47,11 +47,48 @@ class CardStorage:
         path = self.cards_dir / card.back_image
         return Image.open(str(path))
 
+    @property
+    def thumbs_dir(self) -> pathlib.Path:
+        return self.cards_dir / ".thumbs"
+
+    def thumbnail_path(self, card: CardData) -> pathlib.Path:
+        return self.thumbs_dir / f"{card.id}.png"
+
     def load_thumbnail(self, card: CardData) -> Image.Image:
+        """Small sidebar image for a card, cached on disk.
+
+        The card fronts are 1200x1680 PNGs of about 3.5 MB. Decoding one and
+        resizing it costs ~0.2s on the Pi, so building a sidebar of a few
+        hundred cards from the originals took over a minute -- at startup, and
+        again after every generation. The cached version is ~10 KB and loads in
+        a couple of milliseconds.
+        """
+        thumb_path = self.thumbnail_path(card)
+        front_path = self.cards_dir / card.front_image
+        try:
+            if thumb_path.exists() and thumb_path.stat().st_mtime >= front_path.stat().st_mtime:
+                return Image.open(str(thumb_path))
+        except OSError:
+            pass  # unreadable or missing cache entry; fall through and rebuild
+        return self._build_thumbnail(card)
+
+    def _build_thumbnail(self, card: CardData) -> Image.Image:
         img = self.load_front_image(card)
         ratio = config.THUMBNAIL_HEIGHT / img.height
-        new_w = int(img.width * ratio)
-        return img.resize((new_w, config.THUMBNAIL_HEIGHT), Image.LANCZOS)
+        new_w = max(1, int(img.width * ratio))
+        thumb = img.convert("RGB").resize(
+            (new_w, config.THUMBNAIL_HEIGHT), Image.LANCZOS
+        )
+        try:
+            self.thumbs_dir.mkdir(exist_ok=True)
+            # Write via a temp file so a crash mid-write cannot leave a
+            # truncated thumbnail that then gets served from cache forever.
+            tmp = self.thumbnail_path(card).with_suffix(".tmp")
+            thumb.save(str(tmp), format="PNG")
+            tmp.replace(self.thumbnail_path(card))
+        except OSError:
+            pass  # a read-only or full disk should not break the sidebar
+        return thumb
 
     def find_back_for_user(self, user_name: str) -> str | None:
         """Find an existing card back image for this user name."""
@@ -70,3 +107,4 @@ class CardStorage:
         prefix = f"card_{card.id}"
         for p in self.cards_dir.glob(f"{prefix}*"):
             p.unlink()
+        self.thumbnail_path(card).unlink(missing_ok=True)

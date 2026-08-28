@@ -73,6 +73,24 @@ class AppWindow:
     def _refresh_drawer(self):
         cards = self.storage.load_all_cards()
         self.drawer.refresh(cards, self.storage)
+        self._warm_thumbnails(cards)
+
+    def _warm_thumbnails(self, cards: list[CardData]):
+        """Build any missing thumbnail caches in the background.
+
+        The drawer only renders what is on screen, so the app starts fast even
+        with an empty cache. This fills in the rest quietly so that scrolling
+        stays smooth instead of pausing on each uncached card. Touches only
+        files, never Tk, so it is safe off the main thread.
+        """
+        def worker():
+            for card in cards:
+                try:
+                    self.storage.load_thumbnail(card)
+                except Exception:
+                    continue
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _on_card_selected(self, card: CardData):
         """User clicked a card in the drawer."""
@@ -136,7 +154,11 @@ class AppWindow:
     def _generation_done(self, front_img: Image.Image):
         self._showing_back = False
         self.preview.show_image(front_img, side="front")
-        self._refresh_drawer()
+        # Insert the one new card instead of reloading every thumbnail, which
+        # is what made the sidebar lag for minutes after each generation.
+        if self._current_card is not None:
+            self.drawer.add_card(self._current_card, self.storage)
+            self.drawer.select(self._current_card)
         self.form.set_generating(False)
         self.form.set_status("Card created!")
 
