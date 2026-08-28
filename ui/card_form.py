@@ -1,6 +1,34 @@
+from __future__ import annotations
 import tkinter as tk
-from tkinter import ttk
 from core.card_model import CardData, Attack
+from ui import theme
+
+
+class _MultilineField:
+    """A tk.Text that behaves enough like an Entry for this form.
+
+    Description and attack ideas get several visible lines because children
+    write long, run-on descriptions and a one-line Entry scrolls the start of
+    their own sentence out of view while they are still typing it.
+    """
+
+    def __init__(self, parent, height: int):
+        self.widget = tk.Text(
+            parent, height=height, wrap="word",
+            font=theme.font(theme.INPUT), padx=8, pady=6,
+            undo=True, spacing1=1, spacing3=1,
+        )
+        theme.style_entry(self.widget)
+
+    def get(self) -> str:
+        return self.widget.get("1.0", "end-1c").strip()
+
+    def set(self, value: str):
+        self.widget.delete("1.0", "end")
+        self.widget.insert("1.0", value or "")
+
+    def grid(self, **kw):
+        self.widget.grid(**kw)
 
 
 class CardFormPanel:
@@ -9,76 +37,97 @@ class CardFormPanel:
     def __init__(self, parent: tk.Widget, on_generate):
         self.on_generate = on_generate
 
-        self.frame = tk.Frame(parent, bg="#2d2d5e")
+        self.frame = tk.Frame(parent, bg=theme.PANEL)
 
-        # Title
         tk.Label(
             self.frame, text="Design Your Monster!",
-            font=("Helvetica", 16, "bold"), fg="white", bg="#2d2d5e"
-        ).pack(pady=(10, 15))
+            font=theme.font(theme.TITLE, bold=True),
+            fg=theme.TEXT, bg=theme.PANEL,
+        ).pack(pady=(16, 14))
 
-        # Form area
-        form = tk.Frame(self.frame, bg="#2d2d5e")
-        form.pack(fill=tk.X, padx=15)
+        form = tk.Frame(self.frame, bg=theme.PANEL)
+        form.pack(fill=tk.BOTH, expand=True, padx=18)
 
         self.user_name_var = tk.StringVar()
         self.monster_name_var = tk.StringVar()
-        self.description_var = tk.StringVar()
         self.hp_var = tk.StringVar()
-        self.attack1_var = tk.StringVar()
-        self.attack2_var = tk.StringVar()
-        self.attack3_var = tk.StringVar()
 
-        fields = [
-            ("Your Name:", self.user_name_var),
-            ("Monster Name:", self.monster_name_var),
-            ("Description (optional):", self.description_var),
-            ("Hit Points (optional):", self.hp_var),
-            ("Attack 1 (optional):", self.attack1_var),
-            ("Attack 2 (optional):", self.attack2_var),
-            ("Attack 3 (optional):", self.attack3_var),
-        ]
+        row = 0
 
-        for i, (label_text, var) in enumerate(fields):
+        def label(text: str, r: int):
             tk.Label(
-                form, text=label_text, font=("Helvetica", 11),
-                fg="#ddd", bg="#2d2d5e", anchor="w"
-            ).grid(row=i, column=0, sticky="w", pady=3)
-            entry = tk.Entry(
-                form, textvariable=var, font=("Helvetica", 12),
-                width=28, bg="#3d3d7e", fg="white", insertbackground="white",
-                relief=tk.FLAT, highlightthickness=1, highlightcolor="#ff6b35"
-            )
-            entry.grid(row=i, column=1, sticky="ew", pady=3, padx=(8, 0))
+                form, text=text, font=theme.font(theme.LABEL),
+                fg=theme.TEXT_DIM, bg=theme.PANEL, anchor="w",
+            ).grid(row=r, column=0, sticky="nw", pady=(8, 2))
+
+        def entry(var: tk.StringVar, r: int):
+            e = tk.Entry(form, textvariable=var, font=theme.font(theme.INPUT))
+            theme.style_entry(e)
+            e.grid(row=r, column=1, sticky="ew", pady=(8, 2), padx=(10, 0), ipady=6)
+            return e
+
+        label("Your Name:", row)
+        entry(self.user_name_var, row)
+        row += 1
+
+        label("Monster Name:", row)
+        entry(self.monster_name_var, row)
+        row += 1
+
+        label("What does it\nlook like?", row)
+        self.description_field = _MultilineField(form, height=4)
+        self.description_field.grid(row=row, column=1, sticky="nsew",
+                                    pady=(8, 2), padx=(10, 0))
+        form.rowconfigure(row, weight=3)
+        row += 1
+
+        label("Hit Points:", row)
+        entry(self.hp_var, row)
+        row += 1
+
+        self.attack_fields: list[_MultilineField] = []
+        for i in range(3):
+            label(f"Attack {i + 1}:", row)
+            f = _MultilineField(form, height=2)
+            f.grid(row=row, column=1, sticky="nsew", pady=(8, 2), padx=(10, 0))
+            form.rowconfigure(row, weight=1)
+            self.attack_fields.append(f)
+            row += 1
+
+        tk.Label(
+            form, text="Leave anything blank and the AI will pick for you.",
+            font=theme.font(theme.TINY), fg=theme.MUTED, bg=theme.PANEL,
+        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
         form.columnconfigure(1, weight=1)
 
-        # Generate button (using Label so colors work on macOS)
         self.generate_btn = tk.Label(
             self.frame, text="Generate Card!",
-            font=("Helvetica", 16, "bold"), bg="#ff6b35", fg="white",
-            cursor="hand2", pady=10, relief=tk.RAISED, bd=2,
+            font=theme.font(theme.BUTTON, bold=True), fg="white",
+            cursor="hand2", pady=16,
         )
-        self.generate_btn.pack(pady=(20, 5), padx=15, fill=tk.X)
+        theme.style_button(self.generate_btn, theme.ACCENT, theme.ACCENT_HOVER)
+        self.generate_btn.pack(pady=(16, 6), padx=18, fill=tk.X)
         self.generate_btn.bind("<Button-1>", lambda e: self._on_generate_click())
 
-        # Remix button
         self.remix_btn = tk.Label(
             self.frame, text="Remix This Card",
-            font=("Helvetica", 11, "bold"), bg="#9b59b6", fg="white",
-            cursor="hand2", pady=6, relief=tk.RAISED, bd=2,
+            font=theme.font(theme.BUTTON_SMALL, bold=True), fg="white",
+            cursor="hand2", pady=9,
         )
-        self.remix_btn.pack(pady=(0, 5), padx=15, fill=tk.X)
+        theme.style_button(self.remix_btn, theme.SECONDARY, theme.SECONDARY_HOVER)
+        self.remix_btn.pack(pady=(0, 8), padx=18, fill=tk.X)
         self.remix_btn.bind("<Button-1>", lambda e: self._on_generate_click())
         self._generating = False
 
-        # Status label
         self.status_var = tk.StringVar(value="Ready to create!")
         self.status_label = tk.Label(
             self.frame, textvariable=self.status_var,
-            font=("Helvetica", 10), fg="#aaa", bg="#2d2d5e"
+            font=theme.font(theme.SMALL), fg=theme.MUTED, bg=theme.PANEL,
         )
-        self.status_label.pack()
+        self.status_label.pack(pady=(0, 12))
+
+    # --- actions ---------------------------------------------------------
 
     def _on_generate_click(self):
         if self._generating:
@@ -103,13 +152,9 @@ class CardFormPanel:
         card = CardData(
             user_name=user_name,
             monster_name=monster_name,
-            description=self.description_var.get().strip(),
+            description=self.description_field.get(),
             hitpoints=hp,
-            attacks=[
-                Attack(description=self.attack1_var.get().strip()),
-                Attack(description=self.attack2_var.get().strip()),
-                Attack(description=self.attack3_var.get().strip()),
-            ],
+            attacks=[Attack(description=f.get()) for f in self.attack_fields],
         )
         self.on_generate(card)
 
@@ -119,19 +164,21 @@ class CardFormPanel:
     def set_generating(self, active: bool):
         self._generating = active
         if active:
-            self.generate_btn.config(bg="#888", fg="#ccc", cursor="watch")
+            self.generate_btn.config(
+                bg=theme.ACCENT_DISABLED, fg="#dddddd", cursor="watch",
+                text="Working on it...",
+            )
         else:
-            self.generate_btn.config(bg="#ff6b35", fg="white", cursor="hand2")
+            self.generate_btn.config(
+                bg=theme.ACCENT, fg="white", cursor="hand2",
+                text="Generate Card!",
+            )
 
     def populate(self, card: CardData):
         """Fill fields from an existing CardData."""
         self.user_name_var.set(card.user_name)
         self.monster_name_var.set(card.monster_name)
-        self.description_var.set(card.description)
-        self.hp_var.set(str(card.hitpoints))
-        if len(card.attacks) >= 1:
-            self.attack1_var.set(card.attacks[0].description)
-        if len(card.attacks) >= 2:
-            self.attack2_var.set(card.attacks[1].description)
-        if len(card.attacks) >= 3:
-            self.attack3_var.set(card.attacks[2].description)
+        self.description_field.set(card.description)
+        self.hp_var.set(str(card.hitpoints) if card.hitpoints else "")
+        for i, field in enumerate(self.attack_fields):
+            field.set(card.attacks[i].description if i < len(card.attacks) else "")

@@ -1,8 +1,10 @@
 from __future__ import annotations
 import tkinter as tk
+import tkinter.font as tkfont
 from PIL import ImageTk
 from core.card_model import CardData
 from core.storage import CardStorage
+from ui import theme
 import config
 
 
@@ -39,35 +41,39 @@ class CardDrawerPanel:
         self._photos: dict[str, ImageTk.PhotoImage] = {}
         self._photo_order: list[str] = []
         self._selected_id: str | None = None
+        self._name_font: tkfont.Font | None = None
+        self._last_width = 0
 
-        self.frame = tk.Frame(parent, width=170, bg="#1a1a40")
+        self.frame = tk.Frame(parent, width=170, bg=theme.PANEL_ALT)
         self.frame.pack_propagate(False)
 
         tk.Label(
             self.frame, text="My Cards",
-            font=("Helvetica", 13, "bold"), fg="white", bg="#1a1a40"
+            font=theme.font(theme.HEADING, bold=True), fg=theme.TEXT, bg=theme.PANEL_ALT
         ).pack(pady=(10, 5))
 
         self._count_label = tk.Label(
-            self.frame, text="", font=("Helvetica", 8), fg="#8888bb", bg="#1a1a40"
+            self.frame, text="", font=theme.font(theme.TINY), fg=theme.MUTED, bg=theme.PANEL_ALT
         )
         self._count_label.pack()
 
         self._search_var = tk.StringVar()
         self._search_entry = tk.Entry(
             self.frame, textvariable=self._search_var,
-            font=("Helvetica", 9), bg="#2d2d5e", fg="white",
-            insertbackground="white", width=15
+            font=theme.font(theme.SMALL), bg=theme.FIELD, fg=theme.TEXT,
+            insertbackground=theme.TEXT, width=15, relief="flat", bd=0,
+            highlightthickness=1, highlightbackground=theme.BORDER,
+            highlightcolor=theme.ACCENT
         )
         self._search_entry.pack(padx=10, pady=(2, 5))
         self._search_placeholder = "Search..."
         self._search_entry.insert(0, self._search_placeholder)
-        self._search_entry.config(fg="#888")
+        self._search_entry.config(fg=theme.MUTED)
         self._search_entry.bind("<FocusIn>", self._on_search_focus_in)
         self._search_entry.bind("<FocusOut>", self._on_search_focus_out)
 
         self.canvas = tk.Canvas(
-            self.frame, width=150, bg="#1a1a40", highlightthickness=0, bd=0
+            self.frame, width=150, bg=theme.PANEL_ALT, highlightthickness=0, bd=0
         )
         self.scrollbar = tk.Scrollbar(
             self.frame, orient=tk.VERTICAL, command=self._on_scrollbar
@@ -117,12 +123,12 @@ class CardDrawerPanel:
     def _on_search_focus_in(self, event):
         if self._search_entry.get() == self._search_placeholder:
             self._search_entry.delete(0, tk.END)
-            self._search_entry.config(fg="white")
+            self._search_entry.config(fg=theme.TEXT)
 
     def _on_search_focus_out(self, event):
         if not self._search_entry.get():
             self._search_entry.insert(0, self._search_placeholder)
-            self._search_entry.config(fg="#888")
+            self._search_entry.config(fg=theme.MUTED)
 
     def _query(self) -> str:
         q = self._search_var.get().lower().strip()
@@ -170,6 +176,21 @@ class CardDrawerPanel:
         self.canvas.delete("row")
         self._rows.clear()
 
+    def _fit_name(self, name: str, max_px: int) -> str:
+        """Trim a monster name to the sidebar width, with an ellipsis.
+
+        Names are centred, so an over-long one used to run off both edges and
+        get clipped into nonsense like ":k gust".
+        """
+        if self._name_font is None:
+            self._name_font = tkfont.Font(font=theme.font(theme.SMALL))
+        if self._name_font.measure(name) <= max_px:
+            return name
+        trimmed = name
+        while trimmed and self._name_font.measure(trimmed + "\u2026") > max_px:
+            trimmed = trimmed[:-1]
+        return (trimmed + "\u2026") if trimmed else ""
+
     def _photo_for(self, card: CardData):
         photo = self._photos.get(card.id)
         if photo is not None:
@@ -189,9 +210,18 @@ class CardDrawerPanel:
         if self.storage is None:
             return
 
+        # Before the canvas is mapped winfo_width() reports 1, and rows built
+        # at that point centre themselves at x=0 (clipped) with names trimmed to
+        # nothing. Wait for a real width, and rebuild if it changes.
+        width = self.canvas.winfo_width()
+        if width <= 1:
+            return
+        if width != self._last_width:
+            self._last_width = width
+            self._reset_rows()
+
         total = len(self._visible_cards)
         height = max(total * self.ROW_H, 1)
-        width = max(self.canvas.winfo_width(), 1)
         self.canvas.configure(scrollregion=(0, 0, width, height))
         self._count_label.config(
             text=f"{total} card{'s' if total != 1 else ''}"
@@ -203,8 +233,8 @@ class CardDrawerPanel:
                 msg = ("No cards yet!\nGenerate your\nfirst card."
                        if not self._all_cards else "No cards match\nyour search.")
                 self._empty_id = self.canvas.create_text(
-                    width // 2, 40, text=msg, fill="#666",
-                    font=("Helvetica", 10), justify=tk.CENTER,
+                    width // 2, 40, text=msg, fill=theme.MUTED,
+                    font=theme.font(theme.SMALL), justify=tk.CENTER,
                 )
             return
         if self._empty_id is not None:
@@ -240,15 +270,16 @@ class CardDrawerPanel:
             items.append(self.canvas.create_rectangle(
                 cx - photo.width() // 2 - 3, y + self.PAD - 3,
                 cx + photo.width() // 2 + 3, y + self.PAD + self.THUMB_H + 3,
-                outline="#ffd700", width=2, tags=("row", tag),
+                outline=theme.GOLD, width=2, tags=("row", tag),
             ))
 
         items.append(self.canvas.create_image(
             cx, y + self.PAD, image=photo, anchor="n", tags=("row", tag),
         ))
         items.append(self.canvas.create_text(
-            cx, y + self.PAD + self.THUMB_H + 2, text=card.monster_name,
-            fill="#ccc", font=("Helvetica", 9), anchor="n", tags=("row", tag),
+            cx, y + self.PAD + self.THUMB_H + 2,
+            text=self._fit_name(card.monster_name, width - 10),
+            fill=theme.TEXT_DIM, font=theme.font(theme.SMALL), anchor="n", tags=("row", tag),
         ))
 
         self.canvas.tag_bind(tag, "<Button-1>", lambda _e, c=card: self.on_card_selected(c))

@@ -8,6 +8,7 @@ from ui.card_form import CardFormPanel
 from ui.card_preview import CardPreviewPanel
 from ui.card_drawer import CardDrawerPanel
 from ui.print_dialog import PrintDialog
+from ui import theme
 from core.card_model import CardData
 from core.storage import CardStorage
 from api import card_gen, back_gen
@@ -20,9 +21,9 @@ class AppWindow:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("YouMon - Monster Card Maker!")
-        self.root.geometry("1050x700")
-        self.root.configure(bg="#2d2d5e")
-        self.root.minsize(900, 600)
+        self.root.geometry("1180x860")
+        self.root.configure(bg=theme.BG)
+        self.root.minsize(1000, 760)
 
         self.storage = CardStorage()
         self._current_card: CardData | None = None
