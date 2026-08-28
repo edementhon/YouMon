@@ -147,8 +147,10 @@ class AppWindow:
                 error_msg = str(e)
                 self.root.after(0, lambda: self._generation_error(error_msg, refused=True))
             except Exception as e:
-                error_msg = str(e)
-                self.root.after(0, lambda: self._generation_error(error_msg))
+                short, detail = self._describe_error(e)
+                self.root.after(
+                    0, lambda: self._generation_error(detail, short=short)
+                )
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -163,7 +165,37 @@ class AppWindow:
         self.form.set_generating(False)
         self.form.set_status("Card created!")
 
-    def _generation_error(self, error_msg: str, refused: bool = False):
+    @staticmethod
+    def _describe_error(e: Exception) -> tuple[str, str]:
+        """Turn an exception into (short preview text, dialog text).
+
+        Worth the effort because the failure modes need different people:
+        a network problem is a grown-up's job, a missing key is a setup step,
+        and everything else wants the actual error visible.
+        """
+        name = type(e).__name__
+        text = f"{name}: {e}"
+        lowered = text.lower()
+        if any(k in lowered for k in
+               ("connection", "timeout", "timed out", "proxy", "unreachable",
+                "getaddrinfo", "name resolution")):
+            return (
+                "Can't reach the\ninternet right now.",
+                "YouMon couldn't reach the OpenAI API.\n\n"
+                "For a grown-up: this machine reaches the internet through the "
+                "proxy set as \"https_proxy\" in config.json. Check that the "
+                "proxy is running and reachable.\n\n"
+                f"{text}",
+            )
+        if any(k in lowered for k in ("api key", "authentication", "401", "unauthorized")):
+            return (
+                "The API key\nisn't working.",
+                f"OpenAI rejected the API key in config.json.\n\n{text}",
+            )
+        return ("Something went wrong\nmaking that card.", f"Something went wrong:\n\n{text}")
+
+    def _generation_error(self, error_msg: str, refused: bool = False,
+                          short: str = "Generation failed."):
         self.form.set_generating(False)
         if refused:
             # A player can actually fix this one, so say how instead of
@@ -173,8 +205,8 @@ class AppWindow:
             messagebox.showinfo("Let's try a different monster", error_msg)
         else:
             self.form.set_status("Error - see details")
-            self.preview.show_error("Generation failed.\nCheck your API key\nand internet.")
-            messagebox.showerror("Generation Error", f"Something went wrong:\n\n{error_msg}")
+            self.preview.show_error(short)
+            messagebox.showerror("Generation Error", error_msg)
 
     def _open_print_dialog(self):
         cards = self.storage.load_all_cards()
@@ -202,8 +234,10 @@ class AppWindow:
                 back_img.save(str(back_path), dpi=(config.CARD_DPI, config.CARD_DPI))
                 self.root.after(0, lambda: self._back_gen_done())
             except Exception as e:
-                error_msg = str(e)
-                self.root.after(0, lambda: self._generation_error(error_msg))
+                short, detail = self._describe_error(e)
+                self.root.after(
+                    0, lambda: self._generation_error(detail, short=short)
+                )
 
         threading.Thread(target=worker, daemon=True).start()
 

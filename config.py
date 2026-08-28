@@ -50,12 +50,34 @@ PREVIEW_HEIGHT = 520
 THUMBNAIL_HEIGHT = 150
 
 
+def _config_data() -> dict:
+    if CONFIG_FILE.exists():
+        try:
+            return json.loads(CONFIG_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
 def load_api_key() -> str:
     """Load OpenAI API key from env var or config.json."""
     key = os.environ.get("OPENAI_API_KEY", "")
     if key:
         return key
-    if CONFIG_FILE.exists():
-        data = json.loads(CONFIG_FILE.read_text())
-        return data.get("openai_api_key", "")
-    return ""
+    return _config_data().get("openai_api_key", "")
+
+
+def load_proxy() -> str:
+    """HTTPS proxy to reach the API through, if this machine needs one.
+
+    Lives in config.json rather than the launcher because the app does not
+    control how it gets started. On kidscomp it is run straight from a
+    terminal as often as from launch.sh, and a proxy exported by the launcher
+    is simply absent in that case -- which looks exactly like the internet
+    being down.
+    """
+    return (
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or _config_data().get("https_proxy", "")
+    )
