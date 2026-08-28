@@ -12,3 +12,6 @@ pi@kidscomp/
 
 # eval artifacts (generated cards, judge output)
 evals/results/
+
+# built proxy binary (rebuild with: cd deploy/openai-proxy && go build)
+deploy/openai-proxy/openai-proxy
