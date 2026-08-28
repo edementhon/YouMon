@@ -2,6 +2,14 @@
 # YouMon - Monster Card Maker launcher
 cd "$(dirname "$0")"
 
+# Refuse to run from anywhere that isn't a YouMon folder. A stray copy of this
+# script elsewhere would otherwise take the first-run path below and start an
+# apt-get and a from-source pip build in the wrong directory.
+if [ ! -f main.py ] || [ ! -f config.py ]; then
+    echo "This doesn't look like the YouMon folder ($(pwd)) — stopping."
+    exit 1
+fi
+
 # First run: set up venv and install dependencies
 if [ ! -d .venv ]; then
     echo "First launch — setting up YouMon..."
