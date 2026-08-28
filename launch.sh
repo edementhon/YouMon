@@ -22,4 +22,9 @@ if [ ! -f config.json ]; then
     exit 1
 fi
 
+# Optional per-machine settings, kept out of the repo so a sync can't clobber
+# them. On kidscomp this points HTTPS_PROXY at the allowlisted egress proxy,
+# since that machine is firewalled off the internet at the router.
+[ -f local.env ] && . ./local.env
+
 .venv/bin/python main.py
