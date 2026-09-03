@@ -4,3 +4,12 @@
 openai>=1.60.0
 Pillow>=9.0
 reportlab>=3.5
+
+# Not imported anywhere in this app. It is here because the venv is built with
+# --system-site-packages, and Debian's Brotli 1.0.9 has a Decompressor.process()
+# that rejects keyword arguments. The OpenAI SDK's HTTP layer calls it that way
+# to decode brotli responses, and the SDK reports the resulting TypeError as
+# APIConnectionError -- so a version skew in a package nobody imports on purpose
+# presents as "the internet is down". Pinning a modern brotli into the venv
+# shadows the system one.
+brotli>=1.1
