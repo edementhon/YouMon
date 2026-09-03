@@ -14,7 +14,9 @@ fi
 if [ ! -d .venv ]; then
     echo "First launch — setting up YouMon..."
     sudo apt-get install -y python3-tk 2>/dev/null
-    python3 -m venv .venv
+    # --system-site-packages so a distro-provided Pillow/reportlab counts,
+    # rather than forcing a from-source build on machines without wheels.
+    python3 -m venv --system-site-packages .venv
     .venv/bin/pip install -r requirements.txt
     echo "Setup complete!"
 fi

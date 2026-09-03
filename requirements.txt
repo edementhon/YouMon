@@ -1,3 +1,6 @@
+# Lower bounds are the oldest versions this code actually uses, not the newest
+# available. kidscomp gets Pillow and reportlab from apt (9.4 and 3.5), and
+# pinning above those would force a from-source build on a 32-bit ARM Pi.
 openai>=1.60.0
-Pillow>=10.0.0
-reportlab>=4.0
+Pillow>=9.0
+reportlab>=3.5
