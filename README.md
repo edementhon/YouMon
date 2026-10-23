@@ -9,49 +9,71 @@ YouMon is a desktop app that lets you make your own Japanese-style collectible c
 - **Card collection** — browse, search, and manage all your saved cards
 - **Print-ready PDF export** — configurable grid layout with crop marks, duplex support, and column mirroring for double-sided printing
 
-## Requirements
+## Setup
 
-- Python 3.10+
-- tkinter (included with Python on most systems; on Linux: `sudo apt-get install python3-tk`)
-- An OpenAI API key on an organization that has completed API verification (GPT
-  Image models require it)
+You need two things: an OpenAI API key, and Python 3.10 or newer. Plan on
+about 15 minutes the first time.
 
-## Quick Start (Debian/Ubuntu/Raspbian)
+### 1. Get an OpenAI API key
 
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/edementhon/YouMon.git
-   cd YouMon
-   ```
+1. Sign in at [platform.openai.com](https://platform.openai.com/).
+2. Add credit under **Settings > Billing**. The API is prepaid; $5 is about
+   70 cards (see [Models and cost](#models-and-cost)). Setting a monthly
+   budget there is a good idea if kids will be pressing the button.
+3. Verify your organization under **Settings > Organization > General >
+   Verify Organization**. OpenAI requires this (an ID check) for its image
+   models; without it every card fails. It can take a few minutes to take
+   effect after it says you're verified.
+4. Create a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+   and copy it (it's shown only once).
 
-2. Add your OpenAI API key:
-   ```bash
-   cp config.json.example config.json
-   # Edit config.json and paste your key
-   ```
+The key is stored in plain text in `config.json` on your computer, and anyone
+who has it can spend your credit, so don't share that file.
 
-3. Run the launcher (creates the venv, installs dependencies, and starts the app):
-   ```bash
-   ./launch.sh
-   ```
-
-## Manual Setup (macOS / other)
-
-If `launch.sh` doesn't suit your platform, set up manually:
+### 2. Install and run: macOS and Linux
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+git clone https://github.com/edementhon/YouMon.git
+cd YouMon
+cp config.json.example config.json
+# open config.json in a text editor and replace sk-your-key-here with your key
+./launch.sh
 ```
 
-Set your API key via environment variable or `config.json` as above, then:
+(No git? Use **Code > Download ZIP** on GitHub and unzip it.)
 
-```bash
-python main.py
-```
+The first run sets up a private Python environment in `.venv` and installs
+what YouMon needs, which takes a minute or two. After that, `./launch.sh` just
+starts the app. If your Python is missing a piece (often `tkinter`, which draws
+the window), the launcher tells you the exact command to install it.
 
-On macOS, tkinter is included with Python from python.org or Homebrew. On Linux you may need `sudo apt-get install python3-tk` (or equivalent for your distro).
+- **macOS:** Python from [python.org](https://www.python.org/downloads/) has
+  everything. Homebrew's Python needs the window toolkit added:
+  `brew install python-tk@3.12` (match your Python version).
+- **Linux desktop icon:** `YouMon.desktop` assumes the folder is at `~/YouMon`.
+  Fix the `Exec=` line if it's elsewhere, then copy the file to
+  `~/.local/share/applications/`.
+
+### 2. Install and run: Windows
+
+1. Install Python from [python.org](https://www.python.org/downloads/). On the
+   first installer screen, tick **Add python.exe to PATH**.
+2. Download YouMon with **Code > Download ZIP** on GitHub and unzip it.
+3. In the YouMon folder, copy `config.json.example` to `config.json`, open it in
+   Notepad, and replace `sk-your-key-here` with your key.
+4. Open PowerShell in that folder (in Explorer: **File > Open Windows
+   PowerShell**, or Shift+right-click) and run:
+
+   ```powershell
+   py -m venv .venv
+   .venv\Scripts\python -m pip install -r requirements.txt
+   .venv\Scripts\python main.py
+   ```
+
+   Next time, only the last line is needed.
+
+We run YouMon on Linux and haven't tested Windows ourselves. If something
+breaks, please open an issue.
 
 ## How It Works
 
@@ -74,8 +96,8 @@ are worth knowing about:
 - `text_model="gpt-5.6-luna"` cuts the text cost by 90%, but the attack names
   and flavor text get noticeably blander.
 
-`gpt-image-2` is the only image model with a future — `gpt-image-1` shuts down
-2026-10-23, `gpt-image-1.5` and `gpt-image-1-mini` on 2026-12-01.
+`gpt-image-2` is the only image model with a future: `gpt-image-1` shut down
+on 2026-10-23, and `gpt-image-1.5` and `gpt-image-1-mini` follow on 2026-12-01.
 
 ## Evals
 
@@ -89,6 +111,11 @@ See [evals/README.md](evals/README.md).
 We've found that a photo printer plus glossy card stock makes them look awesome. This card stock has been great: https://amzn.to/4c5vqQU
 
 Just make sure you set the printer settings to glossy photo paper, up the print quality, that sort of thing.
+
+## The deploy folder
+
+`deploy/` holds scripts for our own setup (a Raspberry Pi that reaches the
+internet only through a filtering proxy). You don't need any of it.
 
 ## License
 
