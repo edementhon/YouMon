@@ -60,11 +60,16 @@ def _config_data() -> dict:
 
 
 def load_api_key() -> str:
-    """Load OpenAI API key from env var or config.json."""
-    key = os.environ.get("OPENAI_API_KEY", "")
-    if key:
-        return key
-    return _config_data().get("openai_api_key", "")
+    """Load OpenAI API key from env var or config.json.
+
+    The placeholder from config.json.example counts as no key, so a copied but
+    unedited config is caught at startup instead of on the first Generate.
+    """
+    key = os.environ.get("OPENAI_API_KEY", "") or _config_data().get("openai_api_key", "")
+    key = key.strip()
+    if key.startswith("sk-your") or key == "sk-...":
+        return ""
+    return key
 
 
 def load_proxy() -> str:

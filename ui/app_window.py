@@ -67,8 +67,9 @@ class AppWindow:
                 "No OpenAI API key found!\n\n"
                 "Ask a grown-up to either:\n"
                 "1. Set the OPENAI_API_KEY environment variable, or\n"
-                '2. Create a config.json file with:\n'
-                '   {"openai_api_key": "sk-..."}'
+                "2. Copy config.json.example to config.json and paste "
+                "the key in place of sk-your-key-here.\n\n"
+                "The README explains how to get a key."
             )
 
     def _refresh_drawer(self):
@@ -179,18 +180,20 @@ class AppWindow:
         if any(k in lowered for k in
                ("connection", "timeout", "timed out", "proxy", "unreachable",
                 "getaddrinfo", "name resolution")):
+            proxy = config.load_proxy()
+            if proxy:
+                hint = (f"this machine reaches the internet through the proxy "
+                        f"{proxy}. Check that the proxy is running and reachable.")
+            else:
+                hint = "check that this computer is online."
             return (
                 "Can't reach the\ninternet right now.",
-                "YouMon couldn't reach the OpenAI API.\n\n"
-                "For a grown-up: this machine reaches the internet through the "
-                "proxy set as \"https_proxy\" in config.json. Check that the "
-                "proxy is running and reachable.\n\n"
-                f"{text}",
+                f"YouMon couldn't reach the OpenAI API.\n\nFor a grown-up: {hint}\n\n{text}",
             )
         if any(k in lowered for k in ("api key", "authentication", "401", "unauthorized")):
             return (
                 "The API key\nisn't working.",
-                f"OpenAI rejected the API key in config.json.\n\n{text}",
+                f"OpenAI rejected the API key (from config.json or OPENAI_API_KEY).\n\n{text}",
             )
         return ("Something went wrong\nmaking that card.", f"Something went wrong:\n\n{text}")
 
