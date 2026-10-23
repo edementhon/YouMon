@@ -7,7 +7,7 @@
 #   - nothing is deleted on the Pi, ever. Files are overwritten in place.
 #   - the current code is tarred to a timestamped backup first (code only, a
 #     few hundred KB -- the 2.5G of cards is not copied anywhere).
-#   - the new code is staged and import-checked under the Pi's own Python 3.9
+#   - the new code is staged and import-checked under the Pi's own Python
 #     before a single file in the live directory is touched. A failed check
 #     aborts before the install step.
 set -euo pipefail
@@ -40,7 +40,7 @@ scp -q /tmp/youmon-sync.tar.gz "$REMOTE:$STAGE/payload.tar.gz"
 ssh "$REMOTE" "cd $STAGE && tar xzf payload.tar.gz && rm payload.tar.gz && ls"
 
 echo
-echo "=== 4. import-checking staged code under the Pi's Python 3.9 ==="
+echo "=== 4. import-checking staged code under the Pi's Python ==="
 ssh "$REMOTE" "cd $STAGE && cp $APP/config.json . 2>/dev/null; \
   $APP/.venv/bin/python -c \"
 import sys
@@ -53,6 +53,11 @@ import openai
 print('openai', openai.__version__)
 print('settings:', config.DEFAULT_GEN)
 print('prompt builds:', len(card_gen.build_system_prompt(True)), 'chars')
+# The staged launch.sh skips setup only if the live venv imports these, and
+# starts the app only if a key loads; check both before installing it.
+import tkinter, PIL, reportlab
+assert config.load_api_key(), 'staged config.py finds no API key in config.json'
+print('launcher preflight: venv ok, key loads')
 print('IMPORT CHECK PASSED')
 \"" || { echo "ABORT: staged code failed to import on the Pi. Live install untouched."; exit 1; }
 
